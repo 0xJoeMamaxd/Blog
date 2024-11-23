@@ -2,7 +2,15 @@
 
 ### Intro
 
-The BondingManager has a vulnerability that allows the cumulative fees in the earnings pool to be inflated. Cumulative fees represent the total amount of collected fees, and this exploit can be used to drain all ETH from the Minter.
+The BondingManager has a vulnerability that allows the cumulative fees in the earnings pool to be increased while the totalstakes don't. Cumulative fees represent the total amount of collected fees, and this exploit can be used to drain all ETH from the Minter.
+
+![alt text](./images/formula.png)
+
+
+Generally in protocols when 1e18 is staked, and the fee is set to 10%. The Cumulative rewards are 1e16 with a totalstake of 1e18. The Cumulative fees could/should never be bigger than than the totalstakes.
+
+With this exploit you can increase Cumulative fees while keeping totalstake 1, this causes the rewards for transcodersRewards to skyrocket beyond the expected value, draining the funds allocated for fee distribution.
+
 
 ### Livepeer
 
