@@ -2,12 +2,12 @@
 
 ### Intro
 
-The BondingManager has a vulnerability that allows the cumulative fees in the earnings pool to be increased while the totalstakes don't. Cumulative fees represent the total amount of collected fees, and this exploit can be used to drain all ETH from the Minter.
+The BondingManager has a vulnerability that allows the cumulative fees in the earnings pool to be increased while the totalstakes remains unchanged. Cumulative fees represent the total amount of collected fees, and this exploit can be used to drain all ETH from the Minter.
 
 ![alt text](./images/formula.png)
 
 
-Generally in protocols when 1e18 is staked, and the fee is set to 10%. The Cumulative rewards are 1e16 with a totalstake of 1e18. The Cumulative fees could/should never be bigger than than the totalstakes.
+Generally in protocols when 1e18 is staked, and the fee is set to 10%. The Cumulative rewards are 1e17 with a totalstake of 1e18. The Cumulative fees could/should never be bigger than than the totalstakes.
 
 With this exploit you can increase Cumulative fees while keeping totalstake 1, this causes the rewards for transcodersRewards to skyrocket beyond the expected value, draining the funds allocated for fee distribution.
 
@@ -65,8 +65,7 @@ Both activeCumulativeRewards and totalStake are supposed to be updated when rewa
 * totalStake is not updated because increaseTotalStake skips the stake update for inactive transcoders.
 This creates a mismatch.
 
-Exploit in updateTranscoderWithFees:
-The function updateTranscoderWithFees handles fee distribution.
+**The function updateTranscoderWithFees handles fee distribution.**
 
 ```solidity
 if (currentRound > lastRewardRound) {
@@ -96,12 +95,12 @@ uint256 transcoderRewardStakeFees = PreciseMathUtils.percOf(
     totalStake
 );
 ```
+Params:
+- delegatorFees =>  In this case it is close to 100% of the rewards bonded from the redeem ticket
 
-delegatorFees: In this case it is close to 100% of the rewards bonded from the redeem ticket
+- activeCumulativeRewards => This value comes from t.cumulativeRewards and increases in the updateTranscoderWithRewards function.
 
-activeCumulativeRewards: This value comes from t.cumulativeRewards and increases in the updateTranscoderWithRewards function.
-
-totalStake: Represents the total stake in the earnings pool, which must also increase by at least the same amount as activeCumulativeRewards. This is because the cumulative rewards of a transcoder are considered bonded stake.
+- totalStake => Represents the total stake in the earnings pool, which must also increase by at least the same amount as activeCumulativeRewards. This is because the cumulative rewards of a transcoder are considered bonded stake.
 
 
 ### POC
