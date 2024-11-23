@@ -21,6 +21,10 @@ A transcoder in the Livepeer network has two main fee structures:
 1. Reward Cut Rate: This is the percentage of rewards paid by delegators that the transcoder keeps.
 2. Delegator Fee Cut: This is the percentage of transcoding fees that the transcoder distributes to delegators.
 
+
+###### Note: If a user owns a transcoder, they can configure these fee percentages
+
+
 #### Protocol Limits
 
 The protocol limits the number of active transcoders. In this case, the maximum is 50 transcoders.
@@ -30,11 +34,12 @@ The protocol limits the number of active transcoders. In this case, the maximum 
 To become an active transcoder, you must bond or stake more ETH than the current least staked active transcoder. By doing so, you replace them and take their spot in the top 50.
 
 For example, if the least staked transcoder has 40 ETH, you must stake more than 40 ETH to become active and "kick them out" of the active pool.
-Where does it go wrong?
+
+### Where does it go wrong?
 
 When a transcoder is removed from the active transcoder pool:
 * Their deactivation round is set, and they are immediately removed from the pool.
-* However, their stake in the earnings pool is not reset.
+* However, their stake in the earnings pool is not reset for this last round.
 
 
 ### Issue in increaseTotalStake:
@@ -102,3 +107,35 @@ totalStake: Represents the total stake in the earnings pool, which must also inc
 If activeCumulativeRewards ever becomes greater than totalStake, the calculation becomes inaccurate. This is because the formula would effectively apply a multiplier greater than 1.0, resulting in inflated rewards.
 
 
+### POC
+
+
+1. **Initialize a New Transcoder**:  
+   - Bond **4000 LPT** to a new transcoder, making it active.
+
+2. **Set Fee Parameters to Maximum**:  
+   - Set both the **reward cut rate** and **delegator fee cut rate** to **100%**.
+
+3. **Wait for Activation**:  
+   - Wait until the next round when the transcoder becomes active.
+
+4. **Reduce Stake to Minimal**:  
+   - Unbond everything except **1 wei** of the transcoder's stake, leaving only a tiny amount staked.
+
+5. **Evict the First Transcoder**:  
+   - Bond another transcoder with a higher stake (e.g., **10 LPT**) to evict the first transcoder.
+
+6. **Exploit the Reward Mechanism**:  
+   - In the current round, the first transcoder can still call `reward`, increasing its **cumulativeRewards** without increasing the **totalStake** for the next round.
+
+7. **Wait for the Next Round**:  
+   - Let the next round begin with the manipulated reward state.
+
+8. **Redeem a Fee Ticket**:  
+   - Create and redeem a fee ticket to the first transcoder for any value. The percentage calculation will result in a **massive multiplier** due to the tiny `totalStake`.
+
+9. **Claim Exploited Earnings**:  
+   - Call `claimEarnings` to convert the inflated rewards into actual fees.
+
+10. **Drain Funds**:  
+    - Use `withdrawFees` to withdraw the entire balance from the **Minter**, draining its funds.
