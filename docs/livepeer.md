@@ -85,24 +85,6 @@ if (currentRound > lastRewardRound) {
 
 If the transcoder is no longer active, this logic is incorrect. Their previous round's stake and cumulative rewards should no longer influence the current round.
 
-To calculate the fees earned by the transcoder from rewards, the formula is:
-
-
-```solidity
-uint256 transcoderRewardStakeFees = PreciseMathUtils.percOf(
-    delegatorsFees,
-    activeCumulativeRewards,
-    totalStake
-);
-```
-Params:
-- delegatorFees =>  In this case it is close to 100% of the rewards bonded from the redeem ticket
-
-- activeCumulativeRewards => This value comes from t.cumulativeRewards and increases in the updateTranscoderWithRewards function.
-
-- totalStake => Represents the total stake in the earnings pool, which must also increase by at least the same amount as activeCumulativeRewards. This is because the cumulative rewards of a transcoder are considered bonded stake.
-
-
 
 ### Redeem Ticket
 
@@ -139,6 +121,28 @@ This behavior creates an opening for the exploit, as `updateTranscoderWithFees` 
         bondingManager().updateTranscoderWithFees(_recipient, _amount, creationRound);
     }
 ```
+
+### Claim Rewards
+
+To calculate the fees earned by the transcoder from rewards, the formula is:
+
+
+```solidity
+uint256 transcoderRewardStakeFees = PreciseMathUtils.percOf(
+    delegatorsFees,
+    activeCumulativeRewards,
+    totalStake
+);
+```
+Params:
+- delegatorFees =>  In this case it is close to 100% of the rewards bonded from the redeem ticket
+
+- activeCumulativeRewards => This value comes from t.cumulativeRewards and increases in the updateTranscoderWithRewards function.
+
+- totalStake => Represents the total stake in the earnings pool, which must also increase by at least the same amount as activeCumulativeRewards. This is because the cumulative rewards of a transcoder are considered bonded stake.
+
+
+
 ### POC
 
 
@@ -281,3 +285,5 @@ contract PoC is Test {
     receive() external payable {}
 }
 ```
+
+
