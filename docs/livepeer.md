@@ -103,6 +103,42 @@ Params:
 - totalStake => Represents the total stake in the earnings pool, which must also increase by at least the same amount as activeCumulativeRewards. This is because the cumulative rewards of a transcoder are considered bonded stake.
 
 
+
+### Redeem Ticket
+
+The ticket mechanism allows users to potentially win rewards by redeeming a winning ticket. However, it is possible to create and redeem a ticket signed by yourself, effectively allowing you to "win" the rewards. While this may seem advantageous, it does not provide any real benefit because you are essentially receiving your own money back. 
+These tokens will be staked in the protocol, differently than bonding which is crucial for this exploit.
+
+```solidity
+  function redeemWinningTicket(
+        Ticket memory _ticket,
+        bytes memory _sig,
+        uint256 _recipientRand
+    ) public whenSystemNotPaused currentRoundInitialized {
+        bytes32 ticketHash = getTicketHash(_ticket);
+
+        // Require a valid winning ticket for redemption
+        requireValidWinningTicket(_ticket, ticketHash, _sig, _recipientRand);
+```
+
+
+The `RedeemWinningTicket` function transfers the rewarded amount as stake directly to the `BondingManager`. Unlike the regular `bond` function, which users typically call and ensures that the correct values are set, this function does not trigger the same checks. Instead, it calls `updateTranscoderWithFees`, allowing the reward to increase the `cumulativeFees` without adjusting the `totalStake`.
+
+This behavior creates an opening for the exploit, as `updateTranscoderWithFees` can only be called by the `TicketBroker`.
+
+```solidity
+    function winningTicketTransfer(
+        address _recipient,
+        uint256 _amount,
+        bytes memory _auxData
+    ) internal override {
+        (uint256 creationRound, ) = getCreationRoundAndBlockHash(_auxData);
+
+        // Ask BondingManager to update fee pool for recipient with
+        // winning ticket funds
+        bondingManager().updateTranscoderWithFees(_recipient, _amount, creationRound);
+    }
+```
 ### POC
 
 
